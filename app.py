@@ -219,4 +219,9 @@ def update_dashboard(zone, month):
 
 
 
-app.run(host="0.0.0.0", port=10000)
+import os
+
+port = int(os.environ.get("PORT", 10000))
+
+app.run(host="0.0.0.0", port=port)
+
