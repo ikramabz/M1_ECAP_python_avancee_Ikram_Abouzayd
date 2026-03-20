@@ -1,4 +1,4 @@
-#TP DASHBOARD - ECAP STORE
+# DASHBOARD DE VENTES - ECAP STORE ikram 
 
 import pandas as pd
 import dash
@@ -6,13 +6,15 @@ from dash import dcc, html, dash_table
 from dash.dependencies import Input, Output
 import plotly.express as px
 import dash_bootstrap_components as dbc
+import os
 
 # =========================
 # IMPORT DATA
 # =========================
-df = pd.read_csv("data.csv")
+DATA_PATH = os.getenv("DATA_PATH", "data.csv")
 
-# Colonnes d'intérêt
+df = pd.read_csv(DATA_PATH)
+
 df = df[
     [
         "CustomerID",
@@ -23,11 +25,11 @@ df = df[
         "Avg_Price",
         "Transaction_Date",
         "Month",
-        "Discount_pct"
+        "Discount_pct",
     ]
 ]
 
-# Nettoyage des données
+# Nettoyage
 df["CustomerID"] = df["CustomerID"].fillna(0).astype(int)
 df["Quantity"] = pd.to_numeric(df["Quantity"], errors="coerce")
 df["Avg_Price"] = pd.to_numeric(df["Avg_Price"], errors="coerce")
@@ -37,8 +39,9 @@ df["Transaction_Date"] = pd.to_datetime(df["Transaction_Date"], errors="coerce")
 
 df = df.dropna(subset=["Transaction_Date", "Quantity", "Avg_Price"])
 
-# Calcul du prix total
-df["Total_price"] = df["Quantity"] * df["Avg_Price"] * (1 - df["Discount_pct"] / 100)
+df["Total_price"] = df["Quantity"] * df["Avg_Price"] * (
+    1 - df["Discount_pct"] / 100
+)
 
 # =========================
 # FONCTIONS
@@ -46,8 +49,10 @@ df["Total_price"] = df["Quantity"] * df["Avg_Price"] * (1 - df["Discount_pct"] /
 def calculer_chiffre_affaire(data):
     return data["Total_price"].sum()
 
+
 def frequence_meilleure_vente(data, top=10, ascending=False):
     return data["Product_Category"].value_counts(ascending=ascending).head(top)
+
 
 def indicateur_du_mois(data, current_month=12):
     prev_month = 12 if current_month == 1 else current_month - 1
@@ -59,15 +64,15 @@ def indicateur_du_mois(data, current_month=12):
         "ca_current": calculer_chiffre_affaire(current),
         "ca_previous": calculer_chiffre_affaire(previous),
         "sales_current": len(current),
-        "sales_previous": len(previous)
+        "sales_previous": len(previous),
     }
+
 
 # =========================
 # APP DASH
 # =========================
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
-
-server = app.server  
+server = app.server
 
 app.layout = html.Div([
 
@@ -81,7 +86,10 @@ app.layout = html.Div([
 
         dcc.Dropdown(
             id="location_filter",
-            options=[{"label": i, "value": i} for i in sorted(df["Location"].unique())],
+            options=[
+                {"label": i, "value": i}
+                for i in sorted(df["Location"].dropna().unique())
+            ],
             multi=True,
             placeholder="Filtrer par zone",
             style={"width": "250px"}
@@ -150,16 +158,18 @@ app.layout = html.Div([
         Output("line_chart", "figure"),
         Output("bar_chart", "figure"),
         Output("sales_table", "data"),
-        Output("sales_table", "columns")
+        Output("sales_table", "columns"),
     ],
-    Input("location_filter", "value")
+    Input("location_filter", "value"),
 )
 def update_dashboard(location):
 
     dff = df.copy()
+
     if location:
         dff = dff[dff["Location"].isin(location)]
 
+    # KPI
     indicateurs = indicateur_du_mois(dff)
 
     ca_dec = indicateurs["ca_current"]
@@ -191,15 +201,11 @@ def update_dashboard(location):
         .reset_index()
     )
 
-    line = px.line(
-        weekly,
-        x="Transaction_Date",
-        y="Total_price",
-        title="Evolution du chiffre d'affaire par semaine"
-    )
+    line = px.line(weekly, x="Transaction_Date", y="Total_price")
 
     # BAR CHART
     dff_dec = dff[dff["Transaction_Date"].dt.month == 12]
+
     top_categories = frequence_meilleure_vente(dff_dec)
 
     dff_dec = dff_dec[dff_dec["Product_Category"].isin(top_categories.index)]
@@ -230,16 +236,7 @@ def update_dashboard(location):
 
     table["Transaction_Date"] = table["Transaction_Date"].dt.strftime("%d/%m/%Y")
 
-    columns = [
-        {"name": "Date", "id": "Transaction_Date"},
-        {"name": "Sexe", "id": "Gender"},
-        {"name": "Ville", "id": "Location"},
-        {"name": "Catégorie", "id": "Product_Category"},
-        {"name": "Quantité", "id": "Quantity"},
-        {"name": "Prix (€)", "id": "Avg_Price"},
-        {"name": "Remise (%)", "id": "Discount_pct"},
-        {"name": "Total (€)", "id": "Total_price"}
-    ]
+    columns = [{"name": col, "id": col} for col in table.columns]
 
     return (
         kpi_ca,
@@ -249,11 +246,12 @@ def update_dashboard(location):
         line,
         bar,
         table.to_dict("records"),
-        columns
+        columns,
     )
+
 
 # =========================
 # RUN
 # =========================
 if __name__ == "__main__":
-    app.run_server(debug=True)
+    app.run_server(host="0.0.0.0", port=8050, debug=True)
