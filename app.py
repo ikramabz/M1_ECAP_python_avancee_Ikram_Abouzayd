@@ -158,18 +158,18 @@ app.layout = html.Div([
         Output("line_chart", "figure"),
         Output("bar_chart", "figure"),
         Output("sales_table", "data"),
-        Output("sales_table", "columns"),
+        Output("sales_table", "columns")
     ],
-    Input("location_filter", "value"),
+    Input("location_filter", "value")
 )
 def update_dashboard(location):
 
+    # FILTRAGE
     dff = df.copy()
-
     if location:
         dff = dff[dff["Location"].isin(location)]
 
-    # KPI
+    # KPI (avec fonction)
     indicateurs = indicateur_du_mois(dff)
 
     ca_dec = indicateurs["ca_current"]
@@ -181,6 +181,7 @@ def update_dashboard(location):
     var_ca = ca_dec - ca_nov
     var_sales = sales_dec - sales_nov
 
+    # affichage KPI
     kpi_ca = f"{ca_dec/1000:.0f}k"
     kpi_sales = f"{sales_dec}"
 
@@ -194,16 +195,29 @@ def update_dashboard(location):
         style={"color": "green" if var_sales >= 0 else "red"}
     )
 
+    # =========================
     # LINE CHART
+    # =========================
     weekly = (
         dff.groupby(pd.Grouper(key="Transaction_Date", freq="W"))["Total_price"]
         .sum()
         .reset_index()
     )
 
-    line = px.line(weekly, x="Transaction_Date", y="Total_price")
+    line = px.line(
+        weekly,
+        x="Transaction_Date",
+        y="Total_price",
+        title="Evolution du chiffre d'affaire par semaine",
+        labels={
+            "Transaction_Date": "Semaine",
+            "Total_price": "Chiffre d'affaires"
+        }
+    )
 
+    # =========================
     # BAR CHART
+    # =========================
     dff_dec = dff[dff["Transaction_Date"].dt.month == 12]
 
     top_categories = frequence_meilleure_vente(dff_dec)
@@ -216,6 +230,7 @@ def update_dashboard(location):
         .unstack(fill_value=0)
     )
 
+    # tri
     df_grouped["total"] = df_grouped.sum(axis=1)
     df_grouped = df_grouped.sort_values("total", ascending=False).head(10)
     df_grouped = df_grouped.drop(columns="total")
@@ -228,16 +243,40 @@ def update_dashboard(location):
         y="Product_Category",
         color="Gender",
         orientation="h",
-        barmode="group"
+        barmode="group",
+        title="Top 10 des catégories - Nombre de commandes (Décembre)",
+        labels={
+            "value": "Nombre de commandes",
+            "Product_Category": "Catégorie",
+            "Gender": "Genre"
+        },
+        color_discrete_map={"F": "#FFB6C1", "M": "#ADD8E6"},
+        category_orders={
+            "Product_Category": df_grouped.index.tolist()
+        }
     )
 
+    # =========================
     # TABLE
+    # =========================
     table = dff.sort_values("Transaction_Date", ascending=False).head(100).copy()
 
     table["Transaction_Date"] = table["Transaction_Date"].dt.strftime("%d/%m/%Y")
+    table["Avg_Price"] = table["Avg_Price"].round(2)
+    table["Total_price"] = table["Total_price"].round(2)
 
-    columns = [{"name": col, "id": col} for col in table.columns]
+    columns = [
+        {"name": "Date", "id": "Transaction_Date"},
+        {"name": "Sexe", "id": "Gender"},
+        {"name": "Ville", "id": "Location"},
+        {"name": "Catégorie produit", "id": "Product_Category"},
+        {"name": "Quantité", "id": "Quantity"},
+        {"name": "Prix moyen (€)", "id": "Avg_Price"},
+        {"name": "Remise (%)", "id": "Discount_pct"},
+        {"name": "Prix total (€)", "id": "Total_price"}
+    ]
 
+    # RETURN
     return (
         kpi_ca,
         kpi_ca_var,
@@ -246,12 +285,10 @@ def update_dashboard(location):
         line,
         bar,
         table.to_dict("records"),
-        columns,
+        columns
     )
-
-
 # =========================
 # RUN
 # =========================
 if __name__ == "__main__":
-    app.run_server(host="0.0.0.0", port=8013, debug=True)
+    app.run_server(host="0.0.0.0", port=8043, debug=True)
